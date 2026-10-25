@@ -1,65 +1,67 @@
-# Demo script — EquivalenceKit (60–90 seconds)
+# GitProof — 60–90 second demo script
 
-Record the screen while narrating. StudioNet is gasless, so every write costs 0 GEN.
+One continuous run. Do not cut between the browser and the gist more than once.
 
-## 0:00–0:10 — The problem
+## Before recording
 
-Screen: README top ("Both failures are silent: no exception, no revert, no log line").
+- [ ] The app is open at https://gitproof-delta.vercel.app.
+- [ ] The wallet you will connect is on StudioNet.
+- [ ] You control the GitHub account you will type.
+- [ ] The public gist exists and contains exactly
+      `gitproof:<that wallet's address>` on its own line.
+- [ ] You know the gist ID (the last segment of the gist URL).
+- [ ] **Important:** `habte-selassie27` is already claimed by
+      `0x5b3661c576c7001e6d6279c67f3779705d334c89`. Connect that wallet to re-verify the
+      existing record, or use a different GitHub account with the wallet that is
+      connected. A different wallet on the same username is rejected with
+      `ALREADY_CLAIMED` by design.
 
-Narration:
-"Every GenLayer builder hits the same wall: how strict should the equivalence rule be?
-Too strict and honest validators disagree, so nothing finalizes. Too loose and validators
-agree on garbage, permanently. Both fail silently."
+## Script
 
-## 0:10–0:25 — The kit
+**0:00–0:10 — The problem**
 
-Screen: terminal running `python3.12 tools/tightness.py`, zoomed on the report.
+> "GitProof binds a wallet to a GitHub account without OAuth and without a backend.
+> The proof is a public gist; the verifier is a GenLayer Intelligent Contract."
 
-Narration:
-"EquivalenceKit is a tested kit of equivalence patterns. Six patterns, a closed error
-registry, defensive parsing, and a tightness report that measures whether a rule is too
-loose or too strict."
+**0:10–0:25 — The proof**
 
-## 0:25–0:40 — Before/after
+Show the public gist. Point at the single line:
 
-Screen: `tests/matrices/test_naive_vs_kit.py` or the before/after table in
-`docs/tightness-testing.md`.
+> "This line contains the wallet address. The contract will fetch this gist live, check
+> that the gist belongs to the username, and check that the exact line contains the
+> caller's address."
 
-Narration:
-"A naive strict-equality rule rejects honest variation, so nothing finalizes. A naive
-verdict-only rule accepts a hallucinated id. The kit's P1 rule does both right:
-accepts honest noise, rejects the hallucination."
+**0:25–0:50 — Verify**
 
-## 0:40–0:60 — The Live screen
+Open the app, connect the wallet, paste the username and gist ID, click **Verify**.
 
-Screen: https://equivalence-kit.vercel.app → Live. Connect wallet. Run a VerdictJudge read.
+> "The wallet signs. The transaction hash appears here. Validators are fetching GitHub
+> independently and comparing one normalized value: the username and the tier."
 
-Narration:
-"The Live screen calls the deployed contracts. Reads need no wallet. Here's a read
-returning the frozen rubric."
+When it finalizes:
 
-## 0:60–0:80 — A write
+> "Accepted. The contract stored the identity and the tier on StudioNet."
 
-Screen: submit an evaluation, sign in wallet, watch status go to FINALIZED, read back
-the new record.
+**0:50–1:10 — Look up**
 
-Narration:
-"A write is signed in the wallet, then followed through the whole lifecycle: signature,
-hash, live consensus status, the final receipt with validator votes and execution result,
-and a view call that reads the new record back. StudioNet is gasless."
+Use **Look up** with the GitHub username, then with the wallet address.
 
-## 0:80–0:90 — Limits and close
+> "Anyone can read the record. This is `@username · VETERAN · verified` — no wallet
+> needed for the read."
 
-Screen: README Limitations section.
+**1:10–1:25 — Fail closed**
 
-Narration:
-"The kit grades agreement, not truth — that's stated up front. Three reference
-contracts, 334 local tests, 119 frontend tests, lint-clean, deployed, with explorer
-links. EquivalenceKit."
+Open the explorer transaction and show the execution payload (or mention the reason-code
+table in the README).
 
-## Recording notes
+> "If the gist is missing, wrong, private, or GitHub is rate-limited, the transaction
+> rejects with a stable code such as `GIST_MISSING_PROOF` or `SOURCE_UNAVAILABLE`.
+> Nothing partial is ever stored."
 
-- Keep the cursor still; zoom to 125%.
-- Show the explorer receipt for one tx at the end (validator votes visible).
-- Do not claim Bradbury deployment; StudioNet only.
-- Add the final video link to `docs/submission-notes.md` under "Demo video".
+**1:25–1:30 — Close**
+
+> "GitProof: GitHub identity and a developer tier, verified by consensus."
+
+## After recording
+
+Add the public video URL to `docs/submission-notes.md` and to the portal.

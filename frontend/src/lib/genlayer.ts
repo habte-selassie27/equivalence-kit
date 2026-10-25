@@ -1,316 +1,36 @@
-/**
- * The browser's only bridge to GenLayer.
- *
- * Three rules, in order of importance:
- *
- * 1. The SDK loads lazily. Nothing else on the site — and no test — pays for it, and a
- *    failure to load it degrades to read-only messaging instead of a blank page.
- * 2. This module never re-implements chain logic. A read is `readContract`, a write is
- *    signed by the wallet, and finality is whatever the receipt says. Nothing here
- *    predicts consensus.
- * 3. Every address, method name, and argument shape comes from
- *    `deployments/studionet.md`, which `tests/deploy/test_studionet_deployment.py`
- *    generates from the contracts themselves. This registry is data, not inference.
- */
+import { CONTRACT_ADDRESS } from "../config";
+import { REASONS } from "../messages";
 
-import type { Chain } from "viem";
-
-/** StudioNet is the gasless GenLayer development network (0 GEN expected per write). */
-export const NETWORK = "studionet";
-export const EXPLORER = "https://explorer-studio.genlayer.com";
-
-export type FieldKind = "int" | "str";
-
-export interface ChainField {
-  name: string;
-  kind: FieldKind;
-  /** Shown under the input so the argument shape is never a guess. */
-  hint?: string;
-}
-
-export interface ViewMethod {
-  name: string;
-  args: ChainField[];
-  note: string;
-}
-
-export interface WriteMethod {
-  name: string;
-  args: ChainField[];
-  note: string;
-  /** The values the deployment record actually used, so a first run is known-good. */
-  example: Record<string, string>;
-}
-
-export interface Deployment {
-  id: "verdict_judge" | "web_fact_attestor" | "ranking_judge";
-  label: string;
-  file: string;
-  pattern: string;
-  address: `0x${string}`;
-  /** `get_config()` counter that reveals the id a new record gets. */
-  counterKey: string;
-  /** The view that reads one record back after a write. */
-  recordView: string;
-  reads: ViewMethod[];
-  writes: WriteMethod[];
-}
-
-/**
- * The three reference contracts, exactly as deployed on StudioNet.
- *
- * The example write values are the ones recorded in `deployments/studionet.md` — the
- * same titles, verdict sets, rubrics, and fact rules that already reached consensus.
- */
-export const DEPLOYMENTS: Deployment[] = [
-  {
-    id: "verdict_judge",
-    label: "VerdictJudge",
-    file: "contracts/verdict_judge.py",
-    pattern: "P1",
-    address: "0x35aC9fC21e158121B7FC5a2FD0aEAbe62cF063ac",
-    counterKey: "judgments_created",
-    recordView: "get_judgment",
-    reads: [
-      { name: "get_config", args: [], note: "Limits and the counter of judgments created." },
-      {
-        name: "get_judgment",
-        args: [{ name: "judgment_id", kind: "int" }],
-        note: "One judgment: frozen verdict set, rubric, evidence, and assessment history.",
-      },
-      {
-        name: "get_evidence",
-        args: [{ name: "judgment_id", kind: "int" }],
-        note: "The appended evidence references.",
-      },
-      {
-        name: "get_assessments",
-        args: [{ name: "judgment_id", kind: "int" }],
-        note: "Append-only P1 assessments: verdict, band, cited ids.",
-      },
-    ],
-    writes: [
-      {
-        name: "create_judgment",
-        note: "Freeze a verdict set and rubric. Anyone may call it; the record never changes after.",
-        args: [
-          { name: "title", kind: "str", hint: "non-empty" },
-          { name: "verdicts_csv", kind: "str", hint: "comma-separated allowed verdicts" },
-          {
-            name: "rubric_json",
-            kind: "str",
-            hint: "JSON array: {item_id, text, kind: DETERMINISTIC|INTERPRETIVE, rule_kind, rule_value}",
-          },
-        ],
-        example: {
-          title: "Income eligibility",
-          verdicts_csv: "ELIGIBLE,INELIGIBLE",
-          rubric_json:
-            '[{"item_id":"hard_income","text":"Evidence must mention income.","kind":"DETERMINISTIC","rule_kind":"EVIDENCE_CONTAINS","rule_value":"income"},{"item_id":"quality","text":"Assess whether the evidence is sufficient and relevant.","kind":"INTERPRETIVE"}]',
-        },
-      },
-    ],
-  },
-  {
-    id: "web_fact_attestor",
-    label: "WebFactAttestor",
-    file: "contracts/web_fact_attestor.py",
-    pattern: "P2",
-    address: "0x29aE058EdbDCECE5dB10a1a194d4a07e15594462",
-    counterKey: "specs_created",
-    recordView: "get_spec",
-    reads: [
-      { name: "get_config", args: [], note: "Limits and the counter of specs created." },
-      {
-        name: "get_spec",
-        args: [{ name: "spec_id", kind: "int" }],
-        note: "One frozen spec: the exact URL and the fixed fact rules.",
-      },
-      {
-        name: "get_latest_attestation",
-        args: [{ name: "spec_id", kind: "int" }],
-        note: "The newest attestation, with source_status as a first-class state.",
-      },
-      {
-        name: "get_attestations",
-        args: [{ name: "spec_id", kind: "int" }],
-        note: "The append-only attestation history for a spec.",
-      },
-    ],
-    writes: [
-      {
-        name: "create_spec",
-        note: "Freeze an HTTPS URL and its fact rules. Validators re-fetch that exact page.",
-        args: [
-          { name: "url", kind: "str", hint: "https only; loopback and private hosts are rejected" },
-          {
-            name: "facts_json",
-            kind: "str",
-            hint: "JSON array: {name, kind: BOOL_PRESENT_HEADING|BOOL_CONTAINS_PHRASE|BUCKET_WORD_COUNT|ENUM_FROM_LIST, param, edges, allowed}",
-          },
-        ],
-        example: {
-          url: "https://example.com/",
-          facts_json:
-            '[{"name":"has_heading","kind":"BOOL_PRESENT_HEADING","param":"Example Domain"},{"name":"mentions_documentation","kind":"BOOL_CONTAINS_PHRASE","param":"documentation examples"},{"name":"word_bucket","kind":"BUCKET_WORD_COUNT","edges":[10,100]}]',
-        },
-      },
-    ],
-  },
-  {
-    id: "ranking_judge",
-    label: "RankingJudge",
-    file: "contracts/ranking_judge.py",
-    pattern: "P4",
-    address: "0x1c037a13C35E48c72694C6Dd061E908Bdf7f42Ce",
-    counterKey: "records_created",
-    recordView: "get_ranking",
-    reads: [
-      { name: "get_config", args: [], note: "Limits and the counter of rankings created." },
-      {
-        name: "get_ranking",
-        args: [{ name: "ranking_id", kind: "int" }],
-        note: "One ranking: frozen candidates, rubric, P4 parameters, evidence, history.",
-      },
-      {
-        name: "get_evidence",
-        args: [{ name: "ranking_id", kind: "int" }],
-        note: "The evidence references rendered into the ranking prompt.",
-      },
-      {
-        name: "get_rankings",
-        args: [{ name: "ranking_id", kind: "int" }],
-        note: "The append-only ranking history.",
-      },
-    ],
-    writes: [
-      {
-        name: "create_ranking",
-        note: "Freeze the candidate universe and the P4 parameters. min_overlap_pct has a floor of 1.",
-        args: [
-          { name: "title", kind: "str", hint: "non-empty" },
-          { name: "candidates_csv", kind: "str", hint: "comma-separated candidate ids" },
-          { name: "rubric_json", kind: "str", hint: "JSON array of rubric items" },
-          { name: "top_k", kind: "int", hint: "1 … candidates.length" },
-          { name: "min_overlap_pct", kind: "int", hint: "1 … 100" },
-          { name: "max_rank_distance", kind: "int", hint: "0 = no cap" },
-        ],
-        example: {
-          title: "Vendor ranking",
-          candidates_csv: "acme,globex,initech,umbrella",
-          rubric_json:
-            '[{"item_id":"relevance","text":"Rank by how directly the evidence answers the question.","kind":"INTERPRETIVE","rule_kind":"NONE"},{"item_id":"freshness","text":"Prefer the more recent evidence.","kind":"INTERPRETIVE","rule_kind":"NONE"}]',
-          top_k: "2",
-          min_overlap_pct: "50",
-          max_rank_distance: "1",
-        },
-      },
-    ],
-  },
-];
-
-export function findDeployment(id: string): Deployment {
-  const found = DEPLOYMENTS.find((item) => item.id === id) ?? DEPLOYMENTS[0];
-  if (!found) throw new Error("NO_DEPLOYMENT");
-  return found;
-}
-
-export function explorerAddressUrl(address: string): string {
-  return `${EXPLORER}/address/${address}`;
-}
-
-export function explorerTxUrl(hash: string): string {
-  return `${EXPLORER}/tx/${hash}`;
-}
-
-/* SDK loading ------------------------------------------------------------ */
-
-interface Eip1193Provider {
+export interface Eip1193Provider {
   request(args: { method: string; params?: unknown[] | object }): Promise<unknown>;
 }
 
-/** Loose receipt surface. The SDK's TypeScript declarations are camelCase, but the
- *  StudioNet RPC returns snake_case fields (`status_name`, `num_of_rounds`,
- *  `last_round.validator_votes_name`) — measured 2026-10-23 on a real finalized
- *  transaction, not inferred. Both spellings are read; see `summarizeReceipt`. */
+export interface WalletState {
+  status: "no-provider" | "disconnected" | "connecting" | "wrong-network" | "connected";
+  address?: string;
+}
+
+interface LeaderReceipt {
+  execution_result?: string;
+  result?: { status?: string; payload?: string };
+}
+
 export interface ReceiptLike {
   statusName?: string;
   status_name?: string;
-  numOfRounds?: string | number;
-  num_of_rounds?: string | number;
-  txExecutionResultName?: string;
   result_name?: string;
-  lastRound?: { validatorVotesName?: string[] };
-  last_round?: { validator_votes_name?: string[] };
-  consensus_data?: {
-    votes?: Record<string, string>;
-    leader_receipt?: { result?: { status?: string } }[];
-  };
+  consensus_data?: { leader_receipt?: LeaderReceipt[] };
 }
 
-/** The four facts the finality panel shows, read from whatever spelling arrived. */
-export interface ReceiptSummary {
+export interface TxState {
+  phase: "idle" | "signing" | "submitted" | "tracking" | "finalized" | "failed";
+  hash?: string;
   status?: string;
-  /** The consensus outcome, e.g. MAJORITY_AGREE. Not the same thing as execution. */
-  consensusResult?: string;
-  /** FINISHED_WITH_RETURN / FINISHED_WITH_ERROR, when the receipt carries it. */
-  execution?: string;
-  rounds?: string;
-  votes?: string[];
+  error?: string;
+  reason?: string;
 }
 
-/**
- * Normalize a receipt into what the UI shows.
- *
- * Two independent facts are kept separate on purpose:
- * - consensus (`MAJORITY_AGREE`) says validators accepted the leader's result;
- * - execution says whether the leader's VM finished with a return or an error.
- * A transaction can be accepted by consensus and still have a failed execution, so the
- * panel never reports one as the other.
- */
-export function summarizeReceipt(receipt: ReceiptLike | undefined): ReceiptSummary {
-  if (!receipt) return {};
-  const summary: ReceiptSummary = {};
-
-  summary.status = receipt.status_name ?? receipt.statusName;
-  summary.consensusResult = receipt.result_name ?? receipt.txExecutionResultName;
-
-  const rounds = receipt.num_of_rounds ?? receipt.numOfRounds;
-  if (rounds !== undefined) summary.rounds = String(rounds);
-
-  const roundVotes =
-    receipt.last_round?.validator_votes_name ?? receipt.lastRound?.validatorVotesName;
-  if (roundVotes?.length) {
-    summary.votes = roundVotes;
-  } else {
-    const voteMap = receipt.consensus_data?.votes;
-    if (voteMap) {
-      const entries = Object.entries(voteMap);
-      if (entries.length) {
-        const normalized: string[] = [];
-        for (let i = 0; i < entries.length; i++) {
-          const entry = entries[i];
-          if (!entry) continue;
-          const [, vote] = entry;
-          const upper = String(vote).toUpperCase();
-          if (upper === "AGREE" || upper === "DISAGREE" || upper === "IDLE" || upper === "NOT_VOTED") {
-            normalized.push(upper === "IDLE" || upper === "NOT_VOTED" ? "NOT_VOTED" : upper);
-          }
-        }
-        summary.votes = normalized;
-
-      }
-    }
-  }
-
-  const leaderResult = receipt.consensus_data?.leader_receipt?.[0]?.result?.status;
-  if (leaderResult === "return") summary.execution = "FINISHED_WITH_RETURN";
-  else if (leaderResult === "error") summary.execution = "FINISHED_WITH_ERROR";
-
-  return summary;
-}
-
-export interface ChainClient {
+interface ChainClient {
   readContract(args: {
     address: `0x${string}`;
     functionName: string;
@@ -322,10 +42,7 @@ export interface ChainClient {
     args?: unknown[];
     value: bigint;
   }): Promise<`0x${string}`>;
-  getTransaction(args: { hash: string }): Promise<{
-    statusName?: string;
-    status_name?: string;
-  }>;
+  getTransaction(args: { hash: string }): Promise<{ statusName?: string; status_name?: string }>;
   waitForTransactionReceipt(args: {
     hash: string;
     status?: string;
@@ -337,322 +54,212 @@ export interface ChainClient {
 
 interface Sdk {
   createClient(config: {
-    chain?: Chain;
+    chain?: unknown;
     account?: `0x${string}`;
     provider?: Eip1193Provider;
   }): ChainClient;
 }
 
 interface SdkTypes {
-  studionet: Chain;
+  studionet: unknown;
   TransactionStatus: { FINALIZED: string };
 }
 
 let sdkPromise: Promise<{ sdk: Sdk; types: SdkTypes }> | null = null;
 
-/**
- * Load the SDK once. The import is dynamic so the initial bundle stays small and the
- * rest of the site keeps working if the chunk never arrives.
- */
 export function loadSdk(): Promise<{ sdk: Sdk; types: SdkTypes }> {
   if (!sdkPromise) {
-    sdkPromise = (async () => {
-      const [sdkMod, chainMod, typeMod] = await Promise.all([
-        import("genlayer-js"),
-        import("genlayer-js/chains"),
-        import("genlayer-js/types"),
-      ]);
-      return {
-        sdk: sdkMod as unknown as Sdk,
-        types: {
-          studionet: chainMod.studionet,
-          TransactionStatus: typeMod.TransactionStatus,
-        },
-      };
-    })();
+    sdkPromise = Promise.all([
+      import("genlayer-js"),
+      import("genlayer-js/chains"),
+      import("genlayer-js/types"),
+    ]).then(([sdkMod, chainMod, typeMod]) => ({
+      sdk: sdkMod as unknown as Sdk,
+      types: {
+        studionet: (chainMod as unknown as { studionet: unknown }).studionet,
+        TransactionStatus: (typeMod as unknown as {
+          TransactionStatus: SdkTypes["TransactionStatus"];
+        }).TransactionStatus,
+      },
+    }));
   }
   return sdkPromise;
 }
 
-let readClient: ChainClient | null = null;
-
-/** The read client: no wallet, no account, free calls. */
-export async function getReadClient(): Promise<ChainClient> {
-  if (readClient) return readClient;
-  const { sdk, types } = await loadSdk();
-  readClient = sdk.createClient({ chain: types.studionet });
-  return readClient;
-}
-
-/* Reads ------------------------------------------------------------------ */
-
-/**
- * Call a view method and return its JSON value.
- *
- * The reference contracts return JSON strings, which is also what the CLI and the
- * Python tests consume. A value that is not JSON is returned as the raw string rather
- * than dropped.
- */
-export async function readView(
-  deployment: Deployment,
-  method: string,
-  args: unknown[],
-): Promise<unknown> {
-  const client = await getReadClient();
-  const raw = await client.readContract({
-    address: deployment.address,
-    functionName: method,
-    args,
-  });
-  if (typeof raw !== "string") return raw;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
-  }
-}
-
-/** Read `get_config()` and return the counter that names the next record. */
-export async function readNextId(deployment: Deployment): Promise<number> {
-  const config = (await readView(deployment, "get_config", [])) as Record<string, unknown>;
-  const value = config?.[deployment.counterKey];
-  return typeof value === "number" ? value : 0;
-}
-
-/* Wallet ----------------------------------------------------------------- */
-
-export type WalletStatus =
-  | "no-provider"
-  | "disconnected"
-  | "connecting"
-  | "wrong-network"
-  | "connected";
-
-export interface WalletState {
-  status: WalletStatus;
-  address?: string;
-}
-
 export function getEthereum(): Eip1193Provider | null {
-  if (typeof window === "undefined") return null;
   const injected = (window as unknown as { ethereum?: Eip1193Provider }).ethereum;
   return injected ?? null;
 }
 
-/**
- * Ask the wallet for an account, then make sure it is on StudioNet.
- *
- * `client.connect` adds the network if the wallet has never seen it, which is why it is
- * preferred over a hand-rolled `wallet_switchEthereumChain`: the chain definition comes
- * from the SDK rather than a copy of it in this repo.
- */
+export async function getReadClient(): Promise<ChainClient> {
+  const { sdk, types } = await loadSdk();
+  return sdk.createClient({ chain: types.studionet });
+}
+
 export async function connectWallet(): Promise<WalletState> {
   const injected = getEthereum();
   if (!injected) return { status: "no-provider" };
-  const accounts = (await injected.request({ method: "eth_requestAccounts" })) as string[];
-  const address = accounts?.[0];
-  if (!address) return { status: "disconnected" };
-
-  const client = await getReadClient();
   try {
-    await client.connect(NETWORK);
+    const accounts = (await injected.request({ method: "eth_requestAccounts" })) as string[];
+    const address = accounts?.[0];
+    if (!address) return { status: "disconnected" };
+    const client = await getReadClient();
+    try {
+      await client.connect("studionet");
+    } catch {
+      return { status: "wrong-network", address };
+    }
+    return { status: "connected", address };
   } catch {
-    // The wallet refused to switch or add the network. Reads still work; writes don't.
-    return { status: "wrong-network", address };
+    return { status: "disconnected" };
   }
-  return { status: "connected", address };
 }
 
-/* Writes and the transaction lifecycle ------------------------------------ */
-
-export type TxPhase =
-  | "idle"
-  | "signing"
-  | "submitted"
-  | "tracking"
-  | "finalized"
-  | "failed";
-
-export interface TxState {
-  phase: TxPhase;
-  /** The hash once the wallet has signed and the network has taken the transaction. */
-  hash?: string;
-  /** The consensus status as it moves: PENDING, PROPOSING, COMMITTING, REVEALING, … */
-  statusName?: string;
-  /** The final receipt: validator votes, consensus outcome, execution, round count. */
-  votes?: string[];
-  consensusResult?: string;
-  execution?: string;
-  rounds?: string;
-  error?: string;
-  /** The id the new record got, and the record read back after finality. */
-  recordId?: number;
-  readBack?: unknown;
+export async function readRecord(wallet: string): Promise<Record<string, unknown> | null> {
+  const client = await getReadClient();
+  const raw = await client.readContract({
+    address: CONTRACT_ADDRESS,
+    functionName: "get_record",
+    args: [wallet],
+  });
+  if (raw && typeof raw === "object") return raw as Record<string, unknown>;
+  if (typeof raw !== "string") return null;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
-const POLL_INTERVAL_MS = 4_000;
-const FINALITY_RETRIES = 120;
+export async function readWallet(username: string): Promise<string> {
+  const client = await getReadClient();
+  const raw = await client.readContract({
+    address: CONTRACT_ADDRESS,
+    functionName: "get_wallet",
+    args: [username],
+  });
+  return typeof raw === "string" ? raw : "";
+}
 
-/**
- * Submit a create-style write and follow it all the way to a readable record:
- * signing (the wallet popup), the transaction hash, the live consensus status while
- * validators vote, the final receipt, and finally a view call that reads the new
- * record back.
- *
- * A transaction can finalize and still have a failed execution, so
- * `executionResult` is reported separately from finality — that distinction is what
- * makes a failing `evaluate` debuggable from the UI.
- *
- * The new record's id comes from the `get_config()` counter read *before* the write
- * lands, which is how the deployment tests find it too.
- */
-export async function submitRecordWrite(
-  deployment: Deployment,
-  method: string,
-  args: unknown[],
+function leaderReceipt(receipt: ReceiptLike): LeaderReceipt | undefined {
+  return receipt.consensus_data?.leader_receipt?.[0];
+}
+
+export function executionFailed(receipt: ReceiptLike): boolean {
+  const leader = leaderReceipt(receipt);
+  return leader?.execution_result === "ERROR" || leader?.result?.status === "rollback";
+}
+
+export function reasonFromReceipt(receipt: ReceiptLike): string | undefined {
+  const payload = leaderReceipt(receipt)?.result?.payload;
+  if (typeof payload === "string" && (REASONS as readonly string[]).includes(payload)) {
+    return payload;
+  }
+  const text = JSON.stringify(receipt);
+  return REASONS.find((code) => text.includes(code));
+}
+
+export async function verifyOnChain(
+  username: string,
+  gistId: string,
   onState: (state: TxState) => void,
 ): Promise<TxState> {
   const state: TxState = { phase: "signing" };
   onState({ ...state });
 
-  let nextId: number | undefined;
-  try {
-    nextId = await readNextId(deployment);
-  } catch {
-    // A failed counter read is not fatal: the write still submits; the read-back is skipped.
+  const injected = getEthereum();
+  if (!injected) {
+    state.phase = "failed";
+    state.error = "No browser wallet was found. Install or unlock one and try again.";
+    onState({ ...state });
+    return state;
   }
 
   try {
-    const client = await getWriteClient();
+    const accounts = (await injected.request({ method: "eth_accounts" })) as string[];
+    const address = accounts?.[0];
+    if (!address) {
+      state.phase = "failed";
+      state.error = "The wallet is not connected. Connect it and try again.";
+      onState({ ...state });
+      return state;
+    }
+
+    const { sdk, types } = await loadSdk();
+    const client = sdk.createClient({
+      chain: types.studionet,
+      account: address as `0x${string}`,
+      provider: injected,
+    });
+    try {
+      await client.connect("studionet");
+    } catch {
+      state.phase = "failed";
+      state.error = "Switch your wallet to StudioNet and try again.";
+      onState({ ...state });
+      return state;
+    }
+
     const hash = await client.writeContract({
-      address: deployment.address,
-      functionName: method,
-      args,
+      address: CONTRACT_ADDRESS,
+      functionName: "verify",
+      args: [username, gistId],
       value: 0n,
     });
     state.phase = "submitted";
     state.hash = hash;
-    state.statusName = "SUBMITTED";
-    onState({ ...state });
-  } catch (error) {
-    state.phase = "failed";
-    state.error = describeError(error, "The wallet declined or the node refused the transaction.");
-    onState({ ...state });
-    return state;
-  }
-
-  return followToFinality(state, deployment, nextId, onState);
-}
-
-let writeClient: ChainClient | null = null;
-
-async function getWriteClient(): Promise<ChainClient> {
-  if (writeClient) return writeClient;
-  const injected = getEthereum();
-  if (!injected) throw new Error("NO_WALLET");
-  const accounts = (await injected.request({ method: "eth_accounts" })) as string[];
-  const address = accounts?.[0];
-  const { sdk, types } = await loadSdk();
-  writeClient = sdk.createClient({
-    chain: types.studionet,
-    account: address as `0x${string}` | undefined,
-    provider: injected,
-  });
-  return writeClient;
-}
-
-/** Poll the transaction's consensus status, wait for finality, read the record back. */
-async function followToFinality(
-  state: TxState,
-  deployment: Deployment,
-  nextId: number | undefined,
-  onState: (state: TxState) => void,
-): Promise<TxState> {
-  const client = await getReadClient();
-  const { types } = await loadSdk();
-  const hash = state.hash as string;
-
-  const seen = new Set<string>();
-  const poll = async () => {
-    try {
-      const tx = await client.getTransaction({ hash });
-      // The RPC spells this `statusName`; older payloads used `status_name`.
-      const status = tx?.statusName ?? tx?.status_name;
-      if (status && !seen.has(status)) {
-        seen.add(status);
-        state.phase = "tracking";
-        state.statusName = status;
-        onState({ ...state });
-      }
-    } catch {
-      // A transient poll failure is not a transaction failure; the receipt decides.
-    }
-  };
-
-  await poll();
-  const poller = setInterval(() => void poll(), POLL_INTERVAL_MS);
-  try {
-    const receipt = await client.waitForTransactionReceipt({
-      hash,
-      status: types.TransactionStatus.FINALIZED,
-      interval: POLL_INTERVAL_MS,
-      retries: FINALITY_RETRIES,
-    });
-    const summary = summarizeReceipt(receipt);
-    state.phase = "finalized";
-    state.statusName = summary.status ?? "FINALIZED";
-    state.votes = summary.votes;
-    state.consensusResult = summary.consensusResult;
-    state.execution = summary.execution;
-    state.rounds = summary.rounds;
     onState({ ...state });
 
-    if (nextId !== undefined) {
-      state.recordId = nextId;
+    const readClient = await getReadClient();
+    const poll = window.setInterval(async () => {
       try {
-        state.readBack = await readView(deployment, deployment.recordView, [nextId]);
+        const tx = await readClient.getTransaction({ hash });
+        const status = tx.statusName ?? tx.status_name;
+        if (status) {
+          state.phase = "tracking";
+          state.status = status;
+          onState({ ...state });
+        }
       } catch {
-        // The read-back is proof, not the transaction itself; a failure here never
-        // re-labels a finalized write as failed.
+        // A transient status read does not change the transaction.
       }
+    }, 4000);
+
+    try {
+      const receipt = await readClient.waitForTransactionReceipt({
+        hash,
+        status: types.TransactionStatus.FINALIZED,
+        interval: 4000,
+        retries: 150,
+      });
+      state.status = receipt.status_name ?? receipt.statusName ?? "FINALIZED";
+      if (executionFailed(receipt)) {
+        state.phase = "failed";
+        state.reason = reasonFromReceipt(receipt);
+        onState({ ...state });
+        return state;
+      }
+      state.phase = "finalized";
       onState({ ...state });
+      return state;
+    } finally {
+      window.clearInterval(poll);
     }
-    return state;
   } catch (error) {
     state.phase = "failed";
-    state.error = describeError(error, "The transaction did not finalize in time.");
+    state.error = describeError(error);
     onState({ ...state });
     return state;
-  } finally {
-    clearInterval(poller);
   }
 }
 
-/**
- * A short, non-technical error line. Wallet and node errors arrive as strings, numbers,
- * or objects depending on the provider; none of them belong verbatim in the UI.
- */
-export function describeError(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message === "NO_WALLET") {
-    return "No browser wallet was found. Install one to write; reads work without it.";
+export function describeError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const candidate = error as { shortMessage?: string; message?: string };
+    if (candidate.shortMessage) return candidate.shortMessage;
+    if (candidate.message) return candidate.message;
   }
-  const text =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : typeof error === "object" && error !== null && "message" in error
-          ? String((error as { message: unknown }).message)
-          : "";
-  if (!text.trim()) return fallback;
-  const line = firstLine(text);
-  // The SDK throws a clear message naming the expected and actual chains; keep it, but
-  // always lead with the reason this UI can act on.
-  if (/chain/i.test(line)) return `${fallback} (${line})`;
-  return line;
-}
-
-function firstLine(text: string): string {
-  const line = text.split("\n")[0] ?? text;
-  return line.length > 200 ? `${line.slice(0, 197)}…` : line;
+  return "The wallet or network rejected the request. Check the wallet and try again.";
 }

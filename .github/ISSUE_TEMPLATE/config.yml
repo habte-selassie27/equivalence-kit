@@ -1,5 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: Equivalence Principle (official docs)
-    url: https://docs.genlayer.com/developers/intelligent-contracts/equivalence-principle
-    about: Read this before proposing a rule — EquivalenceKit implements it, it defines the consensus semantics.

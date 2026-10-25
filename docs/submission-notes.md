@@ -1,116 +1,95 @@
-# Submission notes — EquivalenceKit (Developer Tools track)
+# GitProof — submission notes
 
-## What it does
+Copy-paste fields for the GenLayer Portal (Identity / Reputation).
 
-EquivalenceKit is a tested kit of equivalence and validator patterns for GenLayer
-Intelligent Contracts. It ships:
+## Links
 
-- a pure-Python primitives package (`equivalencekit/`) with zero GenLayer imports:
-  normalizers, comparators, parsers, a closed classified-error registry, bounds;
-- six declarative patterns (P1 Verdict plus band … P6 Boolean attestation) with filled
-  specs, acceptance matrices, and perturbation generators;
-- three reference Intelligent Contracts with real state machines — VerdictJudge (P1),
-  WebFactAttestor (P2), RankingJudge (P4);
-- an in-repo CLI (`ekit audit`, `ekit matrix`, `ekit diagnose`) and a browser playground
-  (`frontend/`) that runs the real package under Pyodide;
-- a failure-diagnosis layer (`equivalencekit/diagnose.py`, `docs/failure-diagnosis.md`):
-  classify a failed receipt into 10 failure classes, map each reason code to its
-  anti-pattern and fix, JSON output for CI;
-- a Live screen (`/live`) that calls the three deployed contracts through `genlayer-js`,
-  including a real wallet write lifecycle.
-
-Pattern coverage note: P3 (bounded number), P5 (entity set), and P6 (boolean attestation)
-are implemented as primitives, specs, and matrices and are covered by the test suite, but
-they do not ship a deployed reference contract.
-
-## Problem it solves
-
-The hardest part of a GenLayer contract is deciding what validators must agree on.
-Rules that are too strict make honest validators disagree; rules that are too loose let a
-validator agree with garbage. Builders reinvent normalizers, tolerance bands, and parsers,
-and rarely test how tight their rules really are. EquivalenceKit gives them reusable
-primitives, a decision guide, and a tightness-testing method (acceptance matrices +
-perturbation generators) that reports harmless-acceptance and harmful-rejection rates.
-
-## How to use
-
-1. Run the primitive gates:
-   `pytest tests/primitives tests/matrices tests/direct tests/site -v`
-   (334 tests, no GenLayer needed).
-2. Lint the contracts: `genvm-lint check contracts/<file>.py --json`.
-3. Audit a contract against the anti-pattern gallery: `ekit audit contracts/ --json`
-   (24 anti-patterns, A1–A24).
-4. Run an acceptance matrix: `ekit matrix tests/matrices/P1.json` (or `--json`).
-5. Diagnose a failed transaction: `ekit diagnose <txHash>` (or `--from-file`).
-6. Deploy: `genlayer network set studionet`, then `genlayer deploy contracts/<file>.py`.
-7. Optional playground: `cd frontend && npm install && npm run dev`
-   (119 tests, including the Pyodide engine test; 1 live-RPC test skipped).
-8. Live site: https://equivalence-kit.vercel.app — go to the Live screen.
+- **Website:** https://gitproof-delta.vercel.app
+- **GitHub:** https://github.com/habte-selassie27/equivalence-kit
+- **Contract (StudioNet):** https://explorer-studio.genlayer.com/address/0x779eC676925D2d884f42b6398e622600aBa92e2e
+- **Deploy tx:** https://explorer-studio.genlayer.com/tx/0xe28201ca9ec6be1523e6c2a37bc2cd936c8bf1dcfc1f44aeea8d55190a5af83e
+- **Real verify tx:** https://explorer-studio.genlayer.com/tx/0x417b112761c6d4d490161c399ded3430eba8a017ea36297c27fc9be162043061
+- **Evidence:** repository link plus [`deployments.md`](../deployments.md)
+- **Demo video:** **TODO — record it with [`demo-script.md`](demo-script.md) and paste the YouTube/X URL here.**
 
 ## Tags
 
-- Tag 1: Contract Testing
-- Tag 2: Failure Diagnosis
+- **Primary:** Identity / Reputation
+- **Secondary:** pick the closest two the form offers. Suggested: *Developer Tooling* and
+  *Social / Identity*. The project is also a live example of *Consensus / Equivalence*
+  (the only compared value is a normalized `{ok, github, tier}` string).
 
-## Networks
+## One-liner (max 180 characters)
 
-StudioNet (gasless, deployed — see `deployments/studionet.md`). Testnet (Bradbury/Asimov)
-not deployed: claiming testnet GEN is a browser step.
+> Prove a GitHub account with a public gist and get an on-chain developer tier on
+> GenLayer — no OAuth, no backend, no trusted server.
 
-## Ready-to-paste submission fields
+## Description (max 1000 characters)
 
-Website: https://equivalence-kit.vercel.app
-GitHub: https://github.com/habte-selassie27/equivalence-kit
-Evidence: https://github.com/habte-selassie27/equivalence-kit
+> GitProof lets a wallet prove it controls a GitHub account without OAuth or a backend.
+> The user creates a public gist containing gitproof:<wallet address>, then submits the
+> GitHub username and gist ID to a GenLayer Intelligent Contract. Validators independently
+> fetch the gist and the GitHub profile live, check ownership, visibility and the exact
+> proof line, and compute a developer tier in code. Consensus compares only a tiny
+> normalized value — the username and the tier — never raw web text or follower counts.
+> The contract stores the verified identity and tier for the wallet and maps the username
+> to that wallet. Anyone can look up the record by wallet or username. Failures are
+> fail-closed with stable reason codes such as GIST_WRONG_OWNER or SOURCE_UNAVAILABLE.
+> Deployed on gasless StudioNet; direct-mode tests mock both GitHub endpoints and cover
+> the happy path, every rejection path, and the tier boundaries.
 
-### One-liner
+## 350-character blurb (if the form asks for exactly 350)
 
-Tested equivalence patterns, an audit linter and tightness testing for GenLayer
-contracts, with 3 deployed reference contracts and a live playground.
+```text
+GitProof lets a wallet prove it controls a GitHub account without OAuth or a backend. Post a public gist with gitproof:<wallet>, and a GenLayer Intelligent Contract fetches the gist and profile live, verifies ownership, and stores a developer reputation tier onchain. Anyone can now look up the verified identity by wallet address or GitHub username.
+```
 
-### Description
+The line inside the code block is 350 characters exactly (counted on 2026-10-25).
 
-EquivalenceKit helps GenLayer builders decide what validators must agree on. Rules that
-are too strict stop transactions finalizing; rules that are too loose finalize wrong
-answers. Both fail silently. The kit ships pure-Python primitives (normalizers,
-comparators, fail-closed parsing, closed error registry), six declarative patterns
-(P1–P6), an `ekit audit` linter for 24 known anti-patterns, and a tightness-testing
-method that measures whether a rule is too loose or too strict. Three reference contracts
-with real state machines are deployed on StudioNet: VerdictJudge, WebFactAttestor and
-RankingJudge. A browser playground runs the same primitives via Pyodide, and its Live
-screen calls the deployed contracts through genlayer-js, following each transaction from
-signature to final receipt. Built for anyone whose contract calls an LLM or the live web.
-Limits are documented: it grades agreement, not truth. P3, P5 and P6 ship as primitives,
-specs, and matrices without a deployed reference contract.
+## How to use it (portal how-to)
 
-### How-to steps
+1. Connect a wallet on **StudioNet** at https://gitproof-delta.vercel.app.
+2. Click **Copy proof line**. Create a **public** gist at https://gist.github.com with
+   that one line.
+3. Copy the gist ID from the gist URL.
+4. Enter the GitHub username and gist ID in **Verify**, click **Verify**, and approve the
+   wallet transaction.
+5. Watch the signature, transaction hash, consensus status and final result. Then use
+   **Look up** with the wallet address or the GitHub username.
 
-1. Open https://equivalence-kit.vercel.app and go to the Live screen.
-2. Connect a wallet on StudioNet (gasless, 0 GEN).
-3. Pick VerdictJudge and run a read call. No wallet signature needed.
-4. Submit a write (e.g. an evaluation) and sign it in your wallet.
-5. Watch the status through consensus to the final receipt, then check the read-back
-   of the new record.
+## Expected verification outcome
 
-### Expected verification outcome
+The transaction reaches **ACCEPTED / FINALIZED** and the lookup shows:
 
-The write moves through signature, tx hash and live consensus status to a finalized
-receipt showing validator votes and execution result. A follow-up view call returns the
-newly written record. The same tx appears on explorer-studio against the contract
-address, with validators in agreement. StudioNet is gasless.
+```
+@habte-selassie27 · VETERAN · verified 10/25/2026
+wallet 0x5b36…4c89
+```
 
-### Contract links (StudioNet)
+The recorded on-chain record is:
 
-- VerdictJudge: https://explorer-studio.genlayer.com/address/0x35aC9fC21e158121B7FC5a2FD0aEAbe62cF063ac
-- WebFactAttestor: https://explorer-studio.genlayer.com/address/0x29aE058EdbDCECE5dB10a1a194d4a07e15594462
-- RankingJudge: https://explorer-studio.genlayer.com/address/0x1c037a13C35E48c72694C6Dd061E908Bdf7f42Ce
+```json
+{"github": "habte-selassie27", "tier": "VETERAN", "verified_at": 1792939254, "wallet": "0x5b3661c576c7001e6d6279c67f3779705d334c89"}
+```
 
-## Demo video (not recorded yet)
+> The existing `habte-selassie27` record is owned by
+> `0x5b3661c576c7001e6d6279c67f3779705d334c89`. If the demo uses a different wallet,
+> create a new gist with **that** wallet's address and use a GitHub account that has not
+> been claimed, or the contract will correctly reject it with `ALREADY_CLAIMED`. See
+> [`demo-script.md`](demo-script.md) for the pre-flight checklist.
 
-Script: `docs/demo-script.md`. Record 60–90s against the Live screen and the tightness
-report, then add the link here.
+## Evidence to cite
 
-## Slot strategy
+- `contracts/gitproof.py` — the Intelligent Contract.
+- `tests/direct/test_gitproof.py` — 14 direct-mode tests with mocked GitHub; all pass.
+- `tests/deploy/test_gitproof_studionet.py` — reads the live record from StudioNet.
+- `deployments.md` — addresses, transactions, votes and read-back.
+- `docs/api-notes.md` — every API used, with the two live `TODO(verify)` items resolved.
 
-Submit EquivalenceKit as a Project. VerdictJudge can also be submitted separately as an
-Intelligent Contract entry if the program allows a second slot that week.
+## Limitations to state honestly
+
+- Proves control of a GitHub account and a snapshot activity tier, not that the person is
+  trustworthy.
+- GitHub's unauthenticated rate limit can make a transaction fail with
+  `SOURCE_UNAVAILABLE`; retrying later works.
+- StudioNet only.

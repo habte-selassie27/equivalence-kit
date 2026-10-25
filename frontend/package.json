@@ -1,41 +1,23 @@
 {
-  "name": "equivalencekit-playground",
+  "name": "gitproof",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Optional docs companion for EquivalenceKit. Not part of the contract submission.",
   "scripts": {
-    "sync:pkg": "node ../tools/copy_pkg.mjs",
-    "predev": "npm run sync:pkg",
     "dev": "vite",
-    "prebuild": "npm run sync:pkg",
-    "build": "npm run typecheck && vite build",
-    "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:e2e": "npm run build && vitest run --config vitest.e2e.config.ts",
-    "typecheck": "tsc --noEmit"
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "genlayer-js": "^1.1.8",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-router-dom": "^7.1.0"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.1.0",
-    "@testing-library/user-event": "^14.5.2",
-    "@types/node": "^22.20.5",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
-    "jsdom": "^26.0.0",
-    "playwright": "^1.64.1",
-    "pyodide": "^0.26.2",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.5",
-    "vitest": "^3.0.5"
+    "typescript": "^5.6.3",
+    "vite": "^6.4.0"
   }
 }

@@ -1,7 +1,0 @@
-# Vercel must not treat this repo as a Python project.
-pyproject.toml
-requirements.txt
-setup.py
-setup.cfg
-Pipfile
-Pipfile.lock

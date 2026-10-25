@@ -1,19 +1,11 @@
 __pycache__/
-*.py[cod]
-.pytest_cache/
+*.pyc
 .venv/
-venv/
+.pytest_cache/
 .env
+.freebuff/
 artifacts/
-frontend/node_modules/
-frontend/dist/
-frontend/public/pyodide/
-.coverage
-htmlcov/
-*.egg-info/
-gltest.config.yaml
 node_modules/
-.vercel
-
-# setuptools wheel test output
-build/
+frontend/dist/
+.vercel/
+frontend/.vercel
