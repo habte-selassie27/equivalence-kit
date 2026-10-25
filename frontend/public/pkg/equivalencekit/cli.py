@@ -7,7 +7,7 @@ from pathlib import Path
 
 from equivalencekit.matrix_runner import run_matrix
 from equivalencekit.scaffold import scaffold
-from equivalencekit.diagnose import diagnose_text, fetch_receipt, format_text
+from equivalencekit.diagnose import diagnose_receipt, diagnose_text, fetch_receipt, format_text
 from equivalencekit.tighten import format_text as tighten_text, load_rule, run_tighten, write_init
 
 
@@ -75,11 +75,11 @@ def main(argv=None) -> int:
 
     if args.command == "diagnose":
         if args.from_file:
-            text = Path(args.from_file).read_text()
+            raw = Path(args.from_file).read_text()
             source = args.from_file
         elif args.txhash:
             try:
-                text = fetch_receipt(args.txhash)
+                raw = fetch_receipt(args.txhash)
             except RuntimeError as exc:
                 print(str(exc))
                 return 2
@@ -87,7 +87,13 @@ def main(argv=None) -> int:
         else:
             parser.error("diagnose requires a txhash or --from-file")
             return 2
-        diagnoses = diagnose_text(text)
+        # Prefer structured receipt diagnosis when the input parses as JSON.
+        try:
+            import json as _json
+            parsed = _json.loads(raw)
+            diagnoses = diagnose_receipt(parsed)
+        except (ValueError, TypeError):
+            diagnoses = diagnose_text(raw)
         if args.json:
             print(json.dumps([asdict(d) for d in diagnoses], indent=2))
         else:
