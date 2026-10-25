@@ -17,7 +17,7 @@ this repository.
 | Explorer | https://explorer-studio.genlayer.com/address/0x779eC676925D2d884f42b6398e622600aBa92e2e |
 | Deploy tx | `0xe28201ca9ec6be1523e6c2a37bc2cd936c8bf1dcfc1f44aeea8d55190a5af83e` |
 | Deploy explorer | https://explorer-studio.genlayer.com/tx/0xe28201ca9ec6be1523e6c2a37bc2cd936c8bf1dcfc1f44aeea8d55190a5af83e |
-| Deploy result | `ACCEPTED`, votes `AGREE, IDLE, AGREE, IDLE, AGREE` |
+| Deploy result | `ACCEPTED` at deploy time, votes `AGREE, IDLE, AGREE, IDLE, AGREE` |
 
 ## Real verification
 
@@ -28,7 +28,8 @@ this repository.
 - Proof line: `gitproof:0x5b3661c576c7001e6d6279c67f3779705d334c89`
 - `verify` tx: `0x417b112761c6d4d490161c399ded3430eba8a017ea36297c27fc9be162043061`
 - Verify explorer: https://explorer-studio.genlayer.com/tx/0x417b112761c6d4d490161c399ded3430eba8a017ea36297c27fc9be162043061
-- Verify result: `ACCEPTED`, `MAJORITY_AGREE`, votes `IDLE, AGREE, IDLE, AGREE, AGREE`
+- Verify result: `ACCEPTED` at write time (now `FINALIZED`), `MAJORITY_AGREE`, votes
+  `IDLE, AGREE, IDLE, AGREE, AGREE`
 
 Read back with the Python client (`get_record` must receive a real `str`, not the CLI's
 address-typed argument):
