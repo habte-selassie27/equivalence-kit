@@ -33,6 +33,10 @@ tolerance and a float coercion on a pasted contract](docs/assets/demo.gif)
   `genlayer-js`, including a real wallet write lifecycle (signature, hash, consensus,
   receipt, read-back). The Audit screen takes a pasted contract and runs the same
   anti-pattern gallery the CI gate runs — findings stay on the machine, shareable by link.
+- **Failure diagnosis** (`equivalencekit/diagnose.py`, `ekit diagnose`): classify a failed
+  receipt into leader refusal, validator disagreement, timeout, rollback, source failure,
+  parse failure, hallucination, or invariant violation, and map each reason code to its
+  anti-pattern and fix. JSON output for CI.
 
 ## What it is not
 
@@ -142,6 +146,7 @@ contract.
 | [`docs/decision-guide.md`](docs/decision-guide.md) | Eight questions to answer before writing non-deterministic logic |
 | [`docs/tightness-testing.md`](docs/tightness-testing.md) | Acceptance matrices, perturbation generators, the report |
 | [`docs/anti-patterns.md`](docs/anti-patterns.md) | 24 broken rules, the input that exposes each, and its fix |
+| [`docs/failure-diagnosis.md`](docs/failure-diagnosis.md) | Failure classes, reason-code map, worked examples, `ekit diagnose` usage |
 | [`docs/case-study.md`](docs/case-study.md) | `ekit audit` on four real public GenLayer contracts, with outputs and an honest miss analysis |
 | [`docs/threat-model.md`](docs/threat-model.md) | Threats, defenses, and — explicitly — what this kit cannot defend against |
 | [`docs/contracts.md`](docs/contracts.md) | Contract design and the verified GenLayer API ledger |

@@ -1,0 +1,10 @@
+{
+  "status": "UNDETERMINED",
+  "statusName": "UNDETERMINED",
+  "consensus_data": {
+    "leader_receipt": [
+      {"execution_result": "FINISHED_WITH_RETURN", "result": {"status": "ok"}}
+    ],
+    "last_round": {"validator_votes_name": {"v1": "AGREE", "v2": "DISAGREE"}}
+  }
+}

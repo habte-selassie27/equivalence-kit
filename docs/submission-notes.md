@@ -13,6 +13,9 @@ Intelligent Contracts. It ships:
   WebFactAttestor (P2), RankingJudge (P4);
 - an in-repo CLI (`ekit audit`, `ekit matrix`, `ekit diagnose`) and a browser playground
   (`frontend/`) that runs the real package under Pyodide;
+- a failure-diagnosis layer (`equivalencekit/diagnose.py`, `docs/failure-diagnosis.md`):
+  classify a failed receipt into 10 failure classes, map each reason code to its
+  anti-pattern and fix, JSON output for CI;
 - a Live screen (`/live`) that calls the three deployed contracts through `genlayer-js`,
   including a real wallet write lifecycle.
 
