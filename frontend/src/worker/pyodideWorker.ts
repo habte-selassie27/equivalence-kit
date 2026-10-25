@@ -32,6 +32,10 @@ let pkgBaseValue = "/pkg/";
 // the playground still boots when the origin is slow.
 const PYODIDE_CDN_BASE = "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/";
 
+// Once the self-hosted runtime has failed, stop retrying it and go straight to
+// the CDN. Flipping this avoids re-paying the self-hosted timeout on every retry.
+let preferCdn = false;
+
 type PyodideModule = {
   loadPyodide: (options: { indexURL: string }) => Promise<Pyodide>;
   version: string;
@@ -143,7 +147,8 @@ async function bootWithRetry(): Promise<void> {
 async function boot(): Promise<void> {
   // Try the self-hosted runtime first; fall back to the CDN so a slow or flaky
   // origin (the 10 MB wasm is the bottleneck) does not brick the playground.
-  const bases = [pyodideBaseValue, PYODIDE_CDN_BASE];
+  // Once self-hosting has failed once, skip it on subsequent attempts.
+  const bases = preferCdn ? [PYODIDE_CDN_BASE] : [pyodideBaseValue, PYODIDE_CDN_BASE];
   let module: PyodideModule | null = null;
   let instance: Pyodide | null = null;
   let lastError: unknown = null;
@@ -160,6 +165,9 @@ async function boot(): Promise<void> {
       break;
     } catch (error) {
       lastError = error;
+      if (base === pyodideBaseValue) {
+        preferCdn = true;
+      }
     }
   }
   if (!instance) {
