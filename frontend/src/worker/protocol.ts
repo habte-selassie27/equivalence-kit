@@ -15,6 +15,18 @@ export type ErrorClass =
   | "LLM_ERROR"
   | "ENGINE";
 
+/**
+ * Boot phases reported by the worker while Pyodide starts. The main thread uses these
+ * as heartbeats: a slow download keeps making progress, so it must not be mistaken for
+ * a hung engine.
+ */
+export type BootPhase = "import" | "runtime" | "package" | "python" | "retry";
+
+export interface WorkerBoot {
+  kind: "boot";
+  phase: BootPhase;
+}
+
 export type Request =
   | {
       kind: "compare";
