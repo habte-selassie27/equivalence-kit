@@ -94,6 +94,7 @@ frontend tests**; all three reference contracts and the consensus-probe fixture 
 | Patterns | `equivalencekit/patterns.py` | P1–P6 specs and comparators, driven by the same data as the tests |
 | Perturbation | `equivalencekit/perturb.py` | Harmless and harmful mutation generators for tightness testing |
 | Tightness report | `tools/tightness.py` | Prints per-pattern acceptance/rejection rates |
+| Mutation testing | `tools/mutation.py` | Kills deliberately broken rules against the matrices; proves discriminating power |
 | Vendor | `tools/vendor.py` | Inlines primitives into a single-file contract |
 | Audit linter | `equivalencekit/audit.py`, `ekit audit` | Static checks for all 24 anti-patterns (A1–A24), JSON for CI, SARIF for GitHub code scanning |
 | Tightness for your rules | `ekit tighten` | Runs a user-supplied `compare(leader, validator, context)` through a fixtures file: harmless/harmful rates, case-by-case misses, `--check` for CI, `--init` for a starter pair |

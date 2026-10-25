@@ -54,6 +54,8 @@ jobs:
           done
       - name: Vendor freshness
         run: python tools/vendor.py --check
+      - name: Mutation testing
+        run: python tools/mutation.py --pattern P1 --check
 
   frontend:
     runs-on: ubuntu-latest

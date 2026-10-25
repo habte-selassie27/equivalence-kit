@@ -152,7 +152,43 @@ with the last receipt, so a genuine regression is not masked.
 - Keep the perturbation generators deterministic (seeded `random.Random`), so a failure
   reproduces exactly.
 
-## 7. Before/after: a naive rule vs. the kit
+## 7. Mutation testing: does the matrix actually bite?
+
+A 100% pass rate on a matrix you wrote yourself is not evidence unless the matrix
+can kill a broken rule. `tools/mutation.py` takes the P1 matrix and six deliberately
+broken versions of the comparator (drop the id-universe check, compare only the
+verdict, widen the band tolerance to 2 steps, drop the invariant, over-tighten the
+band to 0 steps, skip normalization) and reports whether at least one matrix case
+disagrees with each mutant.
+
+Real output:
+
+```text
+EquivalenceKit mutation report — P1
+==================================================
+  KILLED    no_subset (drops subset_of)
+  KILLED    verdict_only (ignores band, ids, invariants)
+  KILLED    band_tolerance_2 (LOW vs HIGH accepted)
+  KILLED    no_invariant (forbidden verdicts pass)
+  KILLED    strict_band (0 steps, rejects honest one-step shift)
+  KILLED    no_normalization (casing/whitespace differences fail)
+
+Mutants: 6/6 killed (100%)
+```
+
+A surviving mutant means the matrix is too weak to catch that defect and must be
+strengthened. The check is enforced in CI and in
+`tests/matrices/test_mutation.py`.
+
+## 8. Property-based tests: cases the author did not write
+
+`tests/matrices/test_p1_properties.py` uses Hypothesis to generate inputs (verdicts,
+bands, cited-id lists, digests) and asserts soundness invariants for every generated
+case: digest text never flips agreement; any unknown id is rejected; band shifts
+beyond one step are rejected; verdict mismatches are rejected. These are not
+hand-written cases, so a failure cannot be blamed on the author having forgotten one.
+
+## 9. Before/after: a naive rule vs. the kit
 
 A reviewer can reasonably ask how the kit is better than what they would write first. The
 answer is in `tests/matrices/test_naive_vs_kit.py`, which runs the same two inputs through
@@ -176,7 +212,7 @@ NAIVE VS KIT (P1)
 That is the whole point of the kit: the naive rules each fail one of the two bars
 (agreement and garbage rejection), and P1 passes both.
 
-## 8. What this cannot prove
+## 10. What this cannot prove
 
 Tightness testing proves the rule behaves as specified on the cases you generate. It cannot
 prove that the specification itself is correct, and it cannot catch a wrong answer that
