@@ -8,22 +8,38 @@
  *  - expose a status the shell can show ("Loading the engine", ready, failed).
  */
 
-import type { Request, Response, WorkerInit, WorkerRequest, WorkerResponse } from "./protocol";
+import type {
+  BootPhase,
+  Request,
+  Response,
+  WorkerBoot,
+  WorkerInit,
+  WorkerRequest,
+  WorkerResponse,
+} from "./protocol";
 
 export const MAX_REQUEST_BYTES = 64 * 1024;
 export const RUN_TIMEOUT_MS = 15_000;
 /**
- * The first request also boots Pyodide: about 13 MB of engine files served from this
- * site (pyodide.asm.wasm 9.7 MB, python_stdlib.zip 2.3 MB, pyodide.asm.js 1.2 MB,
- * measured 2026-10-23), cached by the browser afterwards. 15 s is not enough for that
- * on a normal connection, so any request sent while the engine is still loading gets
- * the boot budget instead. After BOOT_TIMEOUT_MS without a reply the engine is declared
- * failed so the shell can offer a retry instead of "loading" forever — a boot that never
- * answers must not sit invisible in the loading state.
+ * How long the main thread waits for the next boot heartbeat before declaring a stall.
+ *
+ * The first visit downloads about 13 MB (pyodide.asm.wasm 9.7 MB, python_stdlib.zip
+ * 2.3 MB, pyodide.asm.js 1.2 MB, measured 2026-10-23). A fixed 60 s total limit
+ * rejected downloads that were still making progress on a slow connection. The worker
+ * now reports a heartbeat at every boot phase and every five seconds inside a phase;
+ * this is the gap that counts as "stalled", not the total time.
  */
-export const BOOT_TIMEOUT_MS = 60_000;
+export const BOOT_TIMEOUT_MS = 180_000;
+/** Absolute cap even while heartbeats arrive, so a tab cannot load forever. */
+export const BOOT_CEILING_MS = 15 * 60_000;
 
 export type EngineStatus = "idle" | "loading" | "ready" | "failed";
+
+export interface EngineProgress {
+  phase: BootPhase;
+  /** When the first heartbeat for this phase arrived. */
+  since: number;
+}
 
 export class EngineError extends Error {
   readonly errorClass: "EXPECTED" | "EXTERNAL" | "TRANSIENT" | "LLM_ERROR" | "ENGINE";
@@ -39,22 +55,38 @@ export class EngineError extends Error {
   }
 }
 
+interface PendingEntry {
+  resolve: (value: Response) => void;
+  reject: (reason: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+  startedAt: number;
+  /** True while the request is also waiting for the first boot. */
+  boot: boolean;
+  arm: (delayMs: number, reason?: "TIMEOUT" | "BOOT_CEILING") => void;
+}
+
 export class EngineClient {
   private worker: Worker | null = null;
   private status: EngineStatus = "idle";
   private version = "unknown";
   private lastError: string | null = null;
+  private progress: EngineProgress | null = null;
   private listeners = new Set<(status: EngineStatus, version: string) => void>();
-  private pending = new Map<
-    number,
-    { resolve: (value: Response) => void; timer: ReturnType<typeof setTimeout> }
-  >();
+  private progressListeners = new Set<(progress: EngineProgress | null) => void>();
+  private pending = new Map<number, PendingEntry>();
   private counter = 0;
 
   onStatus(listener: (status: EngineStatus, version: string) => void): () => void {
     this.listeners.add(listener);
     listener(this.status, this.version);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Subscribe to boot-phase changes (used for "downloading the runtime" hints). */
+  onProgress(listener: (progress: EngineProgress | null) => void): () => void {
+    this.progressListeners.add(listener);
+    listener(this.progress);
+    return () => this.progressListeners.delete(listener);
   }
 
   getStatus(): EngineStatus {
@@ -70,10 +102,24 @@ export class EngineClient {
     return this.lastError;
   }
 
+  getProgress(): EngineProgress | null {
+    return this.progress;
+  }
+
   private setStatus(status: EngineStatus): void {
     this.status = status;
     for (const listener of this.listeners) {
       listener(this.status, this.version);
+    }
+  }
+
+  private setProgress(phase: BootPhase | null): void {
+    // The same phase repeats every heartbeat. Keep its original start time so React does
+    // not re-render every five seconds just because the engine is still downloading.
+    if (phase !== null && this.progress?.phase === phase) return;
+    this.progress = phase === null ? null : { phase, since: Date.now() };
+    for (const listener of this.progressListeners) {
+      listener(this.progress);
     }
   }
 
@@ -83,16 +129,14 @@ export class EngineClient {
     const worker = new Worker(new URL("./pyodideWorker.ts", import.meta.url), {
       type: "module",
     });
-    worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-      this.handleReply(event.data);
+    worker.onmessage = (event: MessageEvent<WorkerResponse | WorkerBoot>) => {
+      this.handleMessage(event.data);
     };
     worker.onerror = () => {
-      this.lastError = "ENGINE: WORKER_FAILED";
-      this.setStatus("failed");
+      this.failAll("WORKER_FAILED");
     };
     worker.onmessageerror = () => {
-      this.lastError = "ENGINE: WORKER_MESSAGE";
-      this.setStatus("failed");
+      this.failAll("WORKER_MESSAGE");
     };
     this.worker = worker;
 
@@ -104,6 +148,37 @@ export class EngineClient {
     return worker;
   }
 
+  private handleMessage(message: WorkerResponse | WorkerBoot): void {
+    if ((message as WorkerBoot).kind === "boot") {
+      this.handleBoot((message as WorkerBoot).phase);
+      return;
+    }
+    this.handleReply(message as WorkerResponse);
+  }
+
+  /**
+   * A boot heartbeat both updates the UI and resets the stall watchdog. The ceiling is
+   * still enforced from the original request start, so heartbeats cannot keep a broken
+   * boot alive forever.
+   */
+  private handleBoot(phase: BootPhase): void {
+    this.setProgress(phase);
+    const now = Date.now();
+    for (const entry of this.pending.values()) {
+      if (!entry.boot) continue;
+      const elapsed = now - entry.startedAt;
+      const remaining = BOOT_CEILING_MS - elapsed;
+      if (remaining <= 0) {
+        this.failAll("BOOT_CEILING");
+        return;
+      }
+      entry.arm(
+        Math.min(BOOT_TIMEOUT_MS, remaining),
+        remaining < BOOT_TIMEOUT_MS ? "BOOT_CEILING" : "TIMEOUT",
+      );
+    }
+  }
+
   private handleReply(message: WorkerResponse): void {
     const entry = this.pending.get(message.id);
     if (!entry) return;
@@ -112,14 +187,37 @@ export class EngineClient {
     if (message.response.ok) {
       this.version = message.response.packageVersion;
       this.lastError = null;
+      this.setProgress(null);
       this.setStatus("ready");
     } else if (this.status === "loading") {
       // A failed response while still booting means the engine is unusable this
       // session: the shell must show the precomputed state, not "loading" forever.
       this.lastError = `${message.response.errorClass}: ${message.response.reason}`;
+      this.setProgress(null);
       this.setStatus("failed");
     }
     entry.resolve(message.response);
+  }
+
+  /** Fail every pending request and tear down the worker that stopped answering. */
+  private failAll(reason: string): void {
+    const entries = [...this.pending.values()];
+    this.pending.clear();
+    for (const entry of entries) {
+      clearTimeout(entry.timer);
+      entry.reject(new EngineError("ENGINE", reason));
+    }
+    this.terminateWorker();
+    this.lastError = `ENGINE: ${reason}`;
+    this.setProgress(null);
+    this.setStatus("failed");
+  }
+
+  private terminateWorker(): void {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
   }
 
   /**
@@ -152,20 +250,27 @@ export class EngineClient {
 
     const worker = this.ensureWorker();
     const id = ++this.counter;
+    const startedAt = Date.now();
+    const boot = this.status === "loading";
 
     const response = await new Promise<Response>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        this.restart();
-        // The timeout killed a worker that never answered. That is a failure, not an
-        // idle engine: say failed so the shell offers a retry (and never mislabels a
-        // broken engine as "Engine idle").
-        this.lastError = "ENGINE: TIMEOUT";
-        this.setStatus("failed");
-        reject(new EngineError("ENGINE", "TIMEOUT"));
-      }, this.status === "loading" ? BOOT_TIMEOUT_MS : RUN_TIMEOUT_MS);
-
-      this.pending.set(id, { resolve, timer });
+      let entry: PendingEntry;
+      entry = {
+        resolve,
+        reject,
+        startedAt,
+        boot,
+        // Warmed then replaced immediately by arm(); keeps the type non-optional.
+        timer: setTimeout(() => undefined, 0),
+        arm: (delayMs: number, reason: "TIMEOUT" | "BOOT_CEILING" = "TIMEOUT") => {
+          clearTimeout(entry.timer);
+          entry.timer = setTimeout(() => {
+            this.failAll(reason);
+          }, delayMs);
+        },
+      };
+      this.pending.set(id, entry);
+      entry.arm(boot ? BOOT_TIMEOUT_MS : RUN_TIMEOUT_MS);
       worker.postMessage({ id, request } satisfies WorkerRequest);
     });
 
@@ -177,21 +282,22 @@ export class EngineClient {
 
   /** Terminate the worker so the next request starts a fresh one. */
   restart(): void {
-    if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
-    }
-    for (const [, entry] of this.pending) {
-      clearTimeout(entry.timer);
-    }
+    const entries = [...this.pending.values()];
     this.pending.clear();
+    for (const entry of entries) {
+      clearTimeout(entry.timer);
+      entry.reject(new EngineError("ENGINE", "RESTARTED"));
+    }
+    this.terminateWorker();
     this.lastError = null;
+    this.setProgress(null);
     this.setStatus("idle");
   }
 
   dispose(): void {
     this.restart();
     this.listeners.clear();
+    this.progressListeners.clear();
   }
 }
 

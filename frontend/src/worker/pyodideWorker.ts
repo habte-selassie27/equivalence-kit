@@ -9,12 +9,15 @@
  */
 
 import type {
+  BootPhase,
   Request,
   Response,
+  WorkerBoot,
   WorkerInit,
   WorkerRequest,
   WorkerResponse,
 } from "./protocol";
+import { BOOT_ATTEMPTS, isTransientBootError, retryDelayMs } from "./bootRetry";
 
 // The Pyodide runtime is served from this site (public/pyodide/, copied by
 // tools/copy_pkg.mjs), not from a CDN. It is resolved from pkgBase on init because a
@@ -22,6 +25,12 @@ import type {
 let pyodideBaseValue = "/pyodide/";// The package base is sent by the main thread, because a worker resolves relative URLs
 // against its own asset path rather than the page.
 let pkgBaseValue = "/pkg/";
+
+// CDN fallback for the Pyodide runtime. Self-hosting is preferred (no external
+// dependency, works offline), but a slow or flaky connection to the origin can
+// abort the 10 MB wasm download. The CDN is a globally distributed fallback so
+// the playground still boots when the origin is slow.
+const PYODIDE_CDN_BASE = "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/";
 
 type PyodideModule = {
   loadPyodide: (options: { indexURL: string }) => Promise<Pyodide>;
@@ -43,6 +52,33 @@ let packageVersion = "unknown";
 let bootPromise: Promise<void> | null = null;
 
 /**
+ * How often the worker tells the main thread that boot is still alive. The main thread
+ * treats a missing heartbeat as a stall, not as a slow download; this interval is what
+ * lets a 13 MB first visit finish on a slow-but-working connection.
+ */
+const BOOT_HEARTBEAT_MS = 5_000;
+
+function postBoot(phase: BootPhase): void {
+  (self as unknown as Worker).postMessage({ kind: "boot", phase } satisfies WorkerBoot);
+}
+
+/**
+ * Run one boot phase and keep the main thread's watchdog alive while it runs.
+ *
+ * A single `loadPyodide` call can spend minutes downloading and compiling without any
+ * progress event of its own. Heartbeats distinguish that from a worker that died.
+ */
+async function withHeartbeat<T>(phase: BootPhase, task: () => Promise<T>): Promise<T> {
+  postBoot(phase);
+  const timer = setInterval(() => postBoot(phase), BOOT_HEARTBEAT_MS);
+  try {
+    return await task();
+  } finally {
+    clearInterval(timer);
+  }
+}
+
+/**
  * The package lives at a clean in-FS path: sys.path entries are Unix paths inside the
  * Pyodide filesystem, so the pkg URL the main thread sends is only used for fetching
  * the source files, never as an import path.
@@ -60,7 +96,7 @@ const PKG_MOUNT = "/lib";
 async function loadEngine(): Promise<void> {
   if (pyodide) return;
   if (!bootPromise) {
-    bootPromise = boot();
+    bootPromise = bootWithRetry();
   }
   try {
     await bootPromise;
@@ -72,39 +108,90 @@ async function loadEngine(): Promise<void> {
 }
 
 /**
+ * Boot with retries for transient network failures.
+ *
+ * A dropped connection halfway through the 13 MB runtime used to leave the page with
+ * "Failed to fetch dynamically imported module" until the visitor pressed Retry. The
+ * same boot usually succeeds on the next attempt (the bytes already received are in the
+ * HTTP cache), so retry twice before surfacing the failure.
+ */
+async function bootWithRetry(): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < BOOT_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) {
+      postBoot("retry");
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs(attempt)));
+    }
+    try {
+      await boot();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isTransientBootError(error)) {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
+}
+
+/**
  * Load Pyodide, then write the package source into the in-memory filesystem and import
  * it as a normal package. Importing the real package (rather than a copy) is the point:
  * the site must show what the contracts actually do.
  */
 async function boot(): Promise<void> {
-  const module = (await import(
-    /* @vite-ignore */ `${pyodideBaseValue}pyodide.mjs`
-  )) as PyodideModule;
-  const instance = await module.loadPyodide({
-    indexURL: pyodideBaseValue,
+  // Try the self-hosted runtime first; fall back to the CDN so a slow or flaky
+  // origin (the 10 MB wasm is the bottleneck) does not brick the playground.
+  const bases = [pyodideBaseValue, PYODIDE_CDN_BASE];
+  let module: PyodideModule | null = null;
+  let instance: Pyodide | null = null;
+  let lastError: unknown = null;
+  for (const base of bases) {
+    try {
+      module = (await withHeartbeat(
+        "import",
+        () => import(/* @vite-ignore */ `${base}pyodide.mjs`) as Promise<PyodideModule>,
+      ));
+      instance = await withHeartbeat("runtime", () =>
+        module!.loadPyodide({ indexURL: base }),
+      );
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (!instance) {
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
+  await withHeartbeat("package", async () => {
+    const manifestResponse = await fetch(`${pkgBaseValue}manifest.json`);
+    if (!manifestResponse.ok) {
+      throw new Error(`package manifest missing (${manifestResponse.status})`);
+    }
+    const manifest = (await manifestResponse.json()) as {
+      package: string;
+      version: string;
+      files: string[];
+    };
+
+    const root = `${PKG_MOUNT}/${manifest.package}`;
+    instance.FS.mkdirTree(root);
+    for (const file of manifest.files) {
+      const response = await fetch(`${pkgBaseValue}${manifest.package}/${file}`);
+      if (!response.ok) {
+        throw new Error(`package file missing: ${file}`);
+      }
+      instance.FS.writeFile(`${root}/${file}`, await response.text());
+    }
+
+    packageVersion = manifest.version;
   });
 
-  const manifestResponse = await fetch(`${pkgBaseValue}manifest.json`);
-  if (!manifestResponse.ok) {
-    throw new Error(`package manifest missing (${manifestResponse.status})`);
-  }
-  const manifest = (await manifestResponse.json()) as {
-    package: string;
-    version: string;
-    files: string[];
-  };
-
-  const root = `${PKG_MOUNT}/${manifest.package}`;
-  instance.FS.mkdirTree(root);
-  for (const file of manifest.files) {
-    const response = await fetch(`${pkgBaseValue}${manifest.package}/${file}`);
-    if (!response.ok) {
-      throw new Error(`package file missing: ${file}`);
-    }
-    instance.FS.writeFile(`${root}/${file}`, await response.text());
-  }
-
-  await instance.runPythonAsync(`
+  await withHeartbeat("python", () =>
+    instance.runPythonAsync(`
 import sys
 sys.path.insert(0, ${JSON.stringify(PKG_MOUNT)})
 from equivalencekit.patterns import compare_pattern
@@ -112,8 +199,8 @@ from equivalencekit.perturb import harmless_variation, harmful_variation
 from equivalencekit.normalize import normalize_text, normalize_enum, normalize_bool
 from equivalencekit.audit import audit_source as _audit_source
 from equivalencekit import __version__ as __ek_version__
-`);
-  packageVersion = manifest.version;
+`),
+  );
   // Publish the instance only after the package imports, so no request can run against
   // a half-initialised runtime.
   pyodide = instance;
@@ -127,10 +214,15 @@ async function run(request: Request): Promise<Response> {
   try {
     await loadEngine();
   } catch (error) {
+    // Keep the wire reason stable and small. The raw network message can contain the
+    // failing URL and differs between browsers; BOOT_NETWORK is what the UI explains.
+    if (isTransientBootError(error)) {
+      return { ok: false, errorClass: "ENGINE", reason: "BOOT_NETWORK" };
+    }
     return {
       ok: false,
       errorClass: "ENGINE",
-      reason: error instanceof Error ? error.message : String(error),
+      reason: error instanceof Error ? lastMeaningfulLine(error.message) : "BOOT_FAILED",
     };
   }
 
