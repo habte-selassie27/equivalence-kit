@@ -232,7 +232,8 @@ export async function verifyOnChain(
         interval: 4000,
         retries: 150,
       });
-      state.status = receipt.status_name ?? receipt.statusName ?? "FINALIZED";
+      state.status =
+        receipt.result_name ?? receipt.status_name ?? receipt.statusName ?? "FINALIZED";
       if (executionFailed(receipt)) {
         state.phase = "failed";
         state.reason = reasonFromReceipt(receipt);

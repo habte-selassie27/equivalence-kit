@@ -21,22 +21,17 @@ Copy-paste fields for the GenLayer Portal (Identity / Reputation).
 
 ## One-liner (max 180 characters)
 
-> Prove a GitHub account with a public gist and get an on-chain developer tier on
-> GenLayer — no OAuth, no backend, no trusted server.
+```text
+Prove a GitHub account with a public gist and get an on-chain developer tier on GenLayer — no OAuth, no backend, no trusted server.
+```
 
 ## Description (max 1000 characters)
 
-> GitProof lets a wallet prove it controls a GitHub account without OAuth or a backend.
-> The user creates a public gist containing gitproof:<wallet address>, then submits the
-> GitHub username and gist ID to a GenLayer Intelligent Contract. Validators independently
-> fetch the gist and the GitHub profile live, check ownership, visibility and the exact
-> proof line, and compute a developer tier in code. Consensus compares only a tiny
-> normalized value — the username and the tier — never raw web text or follower counts.
-> The contract stores the verified identity and tier for the wallet and maps the username
-> to that wallet. Anyone can look up the record by wallet or username. Failures are
-> fail-closed with stable reason codes such as GIST_WRONG_OWNER or SOURCE_UNAVAILABLE.
-> Deployed on gasless StudioNet; direct-mode tests mock both GitHub endpoints and cover
-> the happy path, every rejection path, and the tier boundaries.
+```text
+GitProof lets a wallet prove it controls a GitHub account without OAuth or a backend. The user creates a public gist containing gitproof:<wallet address>, then submits the GitHub username and gist ID to a GenLayer Intelligent Contract. Validators independently fetch the gist and the GitHub profile live, check ownership, visibility and the exact proof line, and compute a developer tier in code. Consensus compares only a tiny normalized value — the username and the tier — never raw web text or follower counts. The contract stores the verified identity and tier for the wallet and maps the username to that wallet. Anyone can look up the record by wallet or username. Failures are fail-closed with stable reason codes such as GIST_WRONG_OWNER or SOURCE_UNAVAILABLE. Deployed on gasless StudioNet; direct-mode tests mock both GitHub endpoints and cover the happy path, every rejection path, and the tier boundaries.
+```
+
+Counts on 2026-10-25: 131 characters and 917 characters.
 
 ## 350-character blurb (if the form asks for exactly 350)
 
