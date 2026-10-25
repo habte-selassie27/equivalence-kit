@@ -151,8 +151,9 @@ No other reason string is returned.
    same transaction; the account-age component contributed to the VETERAN result.
 3. RESOLVED 2026-10-25: `genlayer-js 1.1.8`; browser reads work (see section 4). The
    browser-wallet write is still to be recorded in the demo.
-4. OPEN, mock-only: secret-gist `public: false` path (the demo uses a public gist by
-   design).
+4. RESOLVED 2026-10-25: a secret gist tested unauthenticated returns `200` with
+   `public: false` (not `404`), so the contract maps it to `GIST_NOT_PUBLIC`; the temporary
+   gist was deleted. The direct test mocks the same shape.
 5. OPEN, mock-only: GitHub 403 rate-limit path (not forced live).
 6. NOTE: `strict_eq` must not be used on raw web or LLM output; GitProof only compares
    the normalized string, which is the documented legitimate use.
