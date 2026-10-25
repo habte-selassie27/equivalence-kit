@@ -8,6 +8,7 @@ import { PerturbationBar } from "../../components/PerturbationBar";
 import { parseJson } from "../../lib/format";
 import { findDeployment } from "../../lib/genlayer";
 import { engine, EngineError, type EngineStatus } from "../../worker/engine";
+import { engineFailureMessage } from "../../lib/engineMessages";
 import type { CompareResult, PatternId } from "../../worker/protocol";
 import { PATTERN_IDS } from "../../worker/protocol";
 
@@ -318,17 +319,20 @@ export function BuilderScreen() {
         </div>
         {engineFailed ? (
           <ErrorNotice
-            message={`The engine couldn't start${engineError ? ` (${engineError})` : ""}. The tightness run is unavailable — check that this site can load /pyodide/, then retry.`}
+            message={`The engine couldn't start — ${engineFailureMessage(engineError)} The live tightness run is unavailable.`}
             action={
-              <button
-                type="button"
-                className="button"
-                onClick={() => {
-                  void engine.retry();
-                }}
-              >
-                Retry the engine
-              </button>
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => {
+                    void engine.retry();
+                  }}
+                >
+                  Retry the engine
+                </button>
+                {engineError ? <code className="small muted">{engineError}</code> : null}
+              </div>
             }
           />
         ) : null}

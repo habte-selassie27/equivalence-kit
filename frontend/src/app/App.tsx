@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { packageVersion } from "../data/load";
-import { engine, type EngineStatus } from "../worker/engine";
+import { engine, type EngineProgress, type EngineStatus } from "../worker/engine";
+import { bootProgressLabel, engineFailureMessage } from "../lib/engineMessages";
 import { useSlowBoot } from "../lib/useSlowBoot";
 import { applyTheme, getThemeSetting, nextThemeSetting, subscribeSystemTheme, type ThemeSetting } from "../lib/theme";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -20,7 +21,13 @@ import { LiveScreen } from "../screens/Live/LiveScreen";
 const EQUIVALENCE_DOCS_URL =
   "https://docs.genlayer.com/developers/intelligent-contracts/equivalence-principle";
 
-function EngineStatusLine({ status }: { status: EngineStatus }) {
+function EngineStatusLine({
+  status,
+  progress,
+}: {
+  status: EngineStatus;
+  progress: EngineProgress | null;
+}) {
   // After 12 s of loading, say why: a first visit downloads the engine files.
   const slowBoot = useSlowBoot(status === "loading");
   const label =
@@ -28,17 +35,23 @@ function EngineStatusLine({ status }: { status: EngineStatus }) {
       ? `Engine ready — equivalencekit ${packageVersion}`
       : status === "loading"
         ? slowBoot
-          ? "Loading the engine — first visit fetches about 13 MB from this site"
-          : "Loading the engine"
+          ? `${bootProgressLabel(progress)} (slow connection)`
+          : bootProgressLabel(progress)
         : status === "failed"
-          ? "Using precomputed results"
+          ? "Engine unavailable"
           : "Engine idle";
 
   return (
     <span
       className="engine-status"
       data-status={status}
-      title={status === "failed" ? (engine.getLastError() ?? undefined) : undefined}
+      title={
+        status === "failed"
+          ? engineFailureMessage(engine.getLastError())
+          : status === "loading"
+            ? "The first visit downloads about 13 MB of engine files from this site."
+            : undefined
+      }
     >
       <span
         className="engine-dot"
@@ -63,9 +76,11 @@ function EngineStatusLine({ status }: { status: EngineStatus }) {
 
 export function App() {
   const [status, setStatus] = useState<EngineStatus>(engine.getStatus());
+  const [progress, setProgress] = useState<EngineProgress | null>(engine.getProgress());
   const [themeSetting, setThemeSetting] = useState<ThemeSetting>(() => getThemeSetting());
 
   useEffect(() => engine.onStatus(setStatus), []);
+  useEffect(() => engine.onProgress(setProgress), []);
 
   // Warm the engine up as soon as the shell mounts, so the status line shows
   // "Loading the engine" and then "Engine ready" while the first screen is usable.
@@ -112,7 +127,7 @@ export function App() {
           <div className="header-controls">
             <WalletButton />
             <ThemeToggle setting={themeSetting} onCycle={cycleTheme} />
-            <EngineStatusLine status={status} />
+            <EngineStatusLine status={status} progress={progress} />
           </div>
         </div>
       </header>

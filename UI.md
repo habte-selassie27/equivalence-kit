@@ -236,8 +236,9 @@ Rules
   docs, and the line "These rules show how validators agree. They do not check whether
   content is true."
 - Skip link to main content; visible Calibre focus ring on every control.
-- A small status line shows the engine state: "Engine ready", "Loading engine", or
-  "Using precomputed results" (section 13.4).
+- A small status line shows the engine state: "Engine ready", the current boot phase
+  while loading, or "Engine unavailable" with Retry. Screens that fall back to stored
+  results say so themselves (section 13.4).
 
 ---
 

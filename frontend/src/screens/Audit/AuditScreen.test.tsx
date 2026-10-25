@@ -31,6 +31,11 @@ vi.mock("../../worker/engine", async (importOriginal) => {
       send: (...args: Parameters<typeof send>) => send(...args),
       getStatus: () => engineStatus,
       getLastError: () => null,
+      getProgress: () => null,
+      onProgress: (listener: (progress: null) => void) => {
+        listener(null);
+        return () => {};
+      },
     },
   };
 });

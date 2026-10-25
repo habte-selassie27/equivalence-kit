@@ -20,7 +20,8 @@ import { categoryLabel, formatJson, parseJson } from "../../lib/format";
 import { MAX_SEED } from "../../lib/limits";
 import { buildShareLink, decodeState } from "../../lib/urlState";
 import { buildTrackSpec, describeField } from "../../lib/tracks";
-import { engine, EngineError, type EngineStatus } from "../../worker/engine";
+import { engine, EngineError, type EngineProgress, type EngineStatus } from "../../worker/engine";
+import { bootProgressLabel, engineFailureMessage } from "../../lib/engineMessages";
 import type { CompareResult, PatternId } from "../../worker/protocol";
 import type { MatrixCase } from "../../data/types";
 
@@ -65,6 +66,7 @@ export function PlaygroundScreen() {
   );
   const [engineStatus, setEngineStatus] = useState<EngineStatus>(engine.getStatus());
   const [engineError, setEngineError] = useState<string | null>(engine.getLastError());
+  const [engineProgress, setEngineProgress] = useState<EngineProgress | null>(engine.getProgress());
   // First boot pulls about 13 MB from this site; after 12 s the hint explains the wait.
   const slowBoot = useSlowBoot(engineStatus === "loading");
 
@@ -76,6 +78,7 @@ export function PlaygroundScreen() {
       }),
     [],
   );
+  useEffect(() => engine.onProgress(setEngineProgress), []);
   useEffect(() => {
     void engine.warmUp();
   }, []);
@@ -340,11 +343,14 @@ export function PlaygroundScreen() {
       <div className="panel">
         {engineFailed ? (
           <ErrorNotice
-            message={`The engine couldn't start${engineError ? ` (${engineError})` : ""}. Showing stored results only. Free-form comparison is unavailable — check that this site can load /pyodide/, then retry.`}
+            message={`The engine couldn't start — ${engineFailureMessage(engineError)} Showing stored results only.`}
             action={
-              <button type="button" className="btn small" onClick={retryEngine}>
-                Retry the engine
-              </button>
+              <div className="btn-row">
+                <button type="button" className="btn small" onClick={retryEngine}>
+                  Retry the engine
+                </button>
+                {engineError ? <code className="small muted">{engineError}</code> : null}
+              </div>
             }
           />
         ) : null}
@@ -380,8 +386,8 @@ export function PlaygroundScreen() {
           {engineStatus === "loading" ? (
             <span className="small muted engine-hint">
               {slowBoot
-                ? "Still loading — first visit fetches about 13 MB from this site, cached afterwards"
-                : "Loading the engine…"}
+                ? `${bootProgressLabel(engineProgress)} — cached after the first visit`
+                : bootProgressLabel(engineProgress)}
             </span>
           ) : null}
           <button

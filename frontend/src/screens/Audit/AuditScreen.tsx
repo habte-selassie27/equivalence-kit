@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { EmptyState, ErrorNotice } from "../../components/Notices";
-import { engine, EngineError, type EngineStatus } from "../../worker/engine";
+import { engine, EngineError, type EngineProgress, type EngineStatus } from "../../worker/engine";
+import { bootProgressLabel, engineFailureMessage } from "../../lib/engineMessages";
+import { useSlowBoot } from "../../lib/useSlowBoot";
 import type { AuditFinding } from "../../worker/protocol";
 
 /** First-visit demo input: a small contract that trips two real anti-patterns. */
@@ -54,6 +56,7 @@ export function AuditScreen() {
   const [toast, setToast] = useState<string | null>(null);
   const [engineStatus, setEngineStatus] = useState<EngineStatus>(engine.getStatus());
   const [engineError, setEngineError] = useState<string | null>(engine.getLastError());
+  const [engineProgress, setEngineProgress] = useState<EngineProgress | null>(engine.getProgress());
 
   useEffect(
     () =>
@@ -63,6 +66,7 @@ export function AuditScreen() {
       }),
     [],
   );
+  useEffect(() => engine.onProgress(setEngineProgress), []);
   useEffect(() => {
     void engine.warmUp();
   }, []);
@@ -111,13 +115,14 @@ export function AuditScreen() {
   }, [sourceText, setSearchParams]);
 
   const engineFailed = engineStatus === "failed";
+  const slowBoot = useSlowBoot(engineStatus === "loading");
   const statusLine =
     engineStatus === "ready"
       ? "Engine ready — the audit runs locally"
       : engineStatus === "loading"
-        ? "Loading the engine…"
+        ? `${bootProgressLabel(engineProgress)}…`
         : engineStatus === "failed"
-          ? `Engine unavailable${engineError ? ` — ${engineError}` : ""}`
+          ? `Engine unavailable — ${engineFailureMessage(engineError)}`
           : "Engine idle";
 
   return (
@@ -131,6 +136,13 @@ export function AuditScreen() {
           verdicts: every rule links to the anti-pattern it guards.
         </p>
         <p className="small muted">{statusLine}</p>
+        {engineStatus === "loading" && slowBoot ? (
+          <p className="small muted">
+            The first visit downloads about 13 MB of engine files. A slow connection can
+            take a few minutes; the page keeps trying while the download is making
+            progress.
+          </p>
+        ) : null}
       </header>
 
       <section className="panel">
@@ -147,21 +159,20 @@ export function AuditScreen() {
         {error ? <ErrorNotice message={error} /> : null}
         {engineFailed ? (
           <ErrorNotice
-            message={
-              engineError
-                ? `Engine failed to start — ${engineError}`
-                : "Engine failed to start"
-            }
+            message={`Engine failed to start — ${engineFailureMessage(engineError)}`}
             action={
-              <button
-                type="button"
-                className="btn small"
-                onClick={() => {
-                  void engine.retry();
-                }}
-              >
-                Retry engine
-              </button>
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => {
+                    void engine.retry();
+                  }}
+                >
+                  Retry engine
+                </button>
+                {engineError ? <code className="small muted">{engineError}</code> : null}
+              </div>
             }
           />
         ) : null}

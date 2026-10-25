@@ -77,9 +77,10 @@ genvm-lint check contracts/web_fact_attestor.py --json
 python3.12 -m pytest tests/integration -v -s --network studionet
 ```
 
-Current status: **322 local tests passing** (primitives, matrices, direct, site) and **106
-frontend tests**; all three reference contracts and the consensus-probe fixture lint clean;
-106 acceptance-matrix cases; perturbations 60/60 harmless accepted and 60/60 harmful rejected.
+Current status: **334 local tests passing** (primitives, matrices, direct, site) and **119
+frontend tests passing** (1 skipped without a live RPC); all three reference contracts and
+the consensus-probe fixture lint clean; 106 acceptance-matrix cases; perturbations 60/60
+harmless accepted and 60/60 harmful rejected.
 
 ## What is in the kit
 
@@ -233,9 +234,13 @@ primitives the contracts run.
 cd frontend
 npm install
 npm run dev          # http://127.0.0.1:5173
-npm run test         # 97 tests, including the Pyodide engine test
+npm run test         # 119 tests, including the Pyodide engine test
 npm run build        # writes dist/
 ```
+
+The first visit downloads about 13 MB of Pyodide assets; they are cached afterwards. On a
+slow connection the status line shows the boot phase, and transient network failures are
+retried automatically.
 
 The site data is generated from the repo, never hand-edited:
 

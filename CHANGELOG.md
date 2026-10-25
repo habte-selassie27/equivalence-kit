@@ -4,6 +4,35 @@ All notable changes to EquivalenceKit are recorded here. Format follows Keep a C
 
 ## [Unreleased]
 
+### Fixed — the engine now survives a slow or flaky first download
+
+The deployed playground could show `Engine failed to start — ENGINE: Failed to fetch
+dynamically imported module: .../pyodide.asm.js` and disable the audit box. The runtime
+was reachable; the boot budget was the bug. A fixed 60-second limit treated a working
+13 MB download on a slow connection as a hung engine, and a dropped connection had no
+retry.
+
+- **Heartbeat watchdog** (`frontend/src/worker/engine.ts`): the worker reports every boot
+  phase (`import`, `runtime`, `package`, `python`) and sends a heartbeat every five
+  seconds inside a phase. The main thread now treats 120 seconds without a heartbeat as a
+  stall, with a 15-minute absolute ceiling. A measured first boot at 150 KB/s completed
+  in 89.5 seconds; the old watchdog failed it at 60.
+- **Automatic retry** (`frontend/src/worker/bootRetry.ts`): three attempts with backoff
+  for browser network failures (`Failed to fetch`, `ERR_NETWORK_CHANGED`, failed dynamic
+  imports). A dropped `pyodide.asm.js` request was re-requested and the engine reached
+  ready in 14.6 seconds. Deterministic failures (missing package file, Python import
+  error) are not retried.
+- **Actionable errors** (`frontend/src/lib/engineMessages.ts`): the page says the engine
+  files could not be downloaded and offers Retry, instead of printing a browser import
+  error. The raw code (`ENGINE: BOOT_NETWORK`, `ENGINE: TIMEOUT`) stays visible in small
+  text for debugging.
+- **Caching** (`vercel.json`): `/pyodide/*` is cached for seven days, Vite's hashed
+  `/assets/*` for a year, and `/pkg/*` revalidates. The first visit still downloads about
+  13 MB; repeat visits no longer re-download it.
+- **Tests**: 13 new frontend tests (boot stall and ceiling, heartbeat reset, run budget,
+  retry classification, friendly messages); frontend suite 119 passing, 1 live-RPC test
+  skipped.
+
 ### Added — the toolchain loop: write a rule, prove it tight, audit it, ship it
 
 The kit stops being reference-only and becomes something a builder runs on their own

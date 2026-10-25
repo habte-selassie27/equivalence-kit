@@ -36,7 +36,7 @@ perturbation generators) that reports harmless-acceptance and harmful-rejection 
 
 1. Run the primitive gates:
    `pytest tests/primitives tests/matrices tests/direct tests/site -v`
-   (322 tests, no GenLayer needed).
+   (334 tests, no GenLayer needed).
 2. Lint the contracts: `genvm-lint check contracts/<file>.py --json`.
 3. Audit a contract against the anti-pattern gallery: `ekit audit contracts/ --json`
    (24 anti-patterns, A1–A24).
@@ -44,7 +44,7 @@ perturbation generators) that reports harmless-acceptance and harmful-rejection 
 5. Diagnose a failed transaction: `ekit diagnose <txHash>` (or `--from-file`).
 6. Deploy: `genlayer network set studionet`, then `genlayer deploy contracts/<file>.py`.
 7. Optional playground: `cd frontend && npm install && npm run dev`
-   (106 tests, including the Pyodide engine test).
+   (119 tests, including the Pyodide engine test; 1 live-RPC test skipped).
 8. Live site: https://equivalence-kit.vercel.app — go to the Live screen.
 
 ## Tags
